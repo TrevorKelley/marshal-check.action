@@ -1,0 +1,17 @@
+description: 'Marshal Validate GitHub Action'
+runs:
+  using: 'node16'
+  main: 'dist/index.js'
+inputs:
+  api-url:
+    description: 'Base URL of the Marshal API (e.g. https://api.marshal.app)'
+    required: true
+  api-key:
+    description: 'Marshal API key'
+    required: true
+  prompt:
+    description: 'Optional original prompt or feature description'
+    required: false
+permissions:
+  pull-requests: write
+  checks: write
