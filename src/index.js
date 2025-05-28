@@ -29,8 +29,10 @@ async function run() {
     // 2. Prompt from PR body
     const prompt = pr.body || '';
 
+    const branch = 'main'
+
     // 3. Build payload
-    const payload = { owner, repo, commit: pr.head.sha, diff, prompt };
+    const payload = { owner, repo, commit: pr.head.sha, diff, prompt, branch};
 
     // 4. Call Marshal API
     const res = await fetch(apiUrl, {

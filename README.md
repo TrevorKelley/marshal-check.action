@@ -4,7 +4,7 @@ This GitHub Action runs Marshal AI's semantic diff validation on your pull reque
 
 In order to use this workflow you will need to generate an api key using: {{}}.
 
-From there add your api key to your 'Github Secrets' and reference them with your workflow as seen below!
+From there add your api key to your 'Github Secrets' and reference them within your workflow as seen below!
 
 ## Usage
 
