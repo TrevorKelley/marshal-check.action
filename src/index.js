@@ -1,42 +1,38 @@
-const core   = require('@actions/core');
+const core = require('@actions/core');
 const github = require('@actions/github');
-const fetch  = require('node-fetch');
+const fetch = require('node-fetch');
 
 async function run() {
   try {
-    const apiUrl = core.getInput('api-url',    { required: true });
-    const apiKey = core.getInput('api-key',    { required: true });
-    const token  = core.getInput('github-token') || process.env.GITHUB_TOKEN;
+    const apiUrl = core.getInput('api-url', { required: true });
+    const apiKey = core.getInput('api-key', { required: true });
+    const token = process.env.GITHUB_TOKEN;
     if (!token) throw new Error('GITHUB_TOKEN is required');
 
-    // Octokit to fetch PR info
     const octokit = github.getOctokit(token);
     const { owner, repo } = github.context.repo;
-    const prNumber = github.context.payload.pull_request?.number;
-    if (!prNumber) throw new Error('This action must run on pull_request events');
+    const pr = github.context.payload.pull_request;
+    if (!pr) throw new Error('This action must run on pull_request events');
 
-    // 1️⃣ fetch the diff
+    // 1. Fetch diff
     const diffResp = await octokit.request(
       'GET /repos/{owner}/{repo}/pulls/{pull_number}',
       {
-        owner, repo, pull_number: prNumber,
+        owner,
+        repo,
+        pull_number: pr.number,
         mediaType: { format: 'diff' }
       }
     );
-    const diff = diffResp.data; // raw diff text
+    const diff = diffResp.data;
 
-    // 2️⃣ pull prompt from PR body
-    const prompt = github.context.payload.pull_request.body || '';
+    // 2. Prompt from PR body
+    const prompt = pr.body || '';
 
-    // 3️⃣ build payload
-    const payload = {
-      owner, repo,
-      commit: github.context.payload.pull_request.head.sha,
-      diff,
-      prompt
-    };
+    // 3. Build payload
+    const payload = { owner, repo, commit: pr.head.sha, diff, prompt };
 
-    // 4️⃣ call Marshal API
+    // 4. Call Marshal API
     const res = await fetch(apiUrl, {
       method: 'POST',
       headers: {
@@ -52,17 +48,16 @@ async function run() {
     const result = await res.json();
     console.log('Marshal result:', result);
 
-    // 5️⃣ fail the step if pass=false
+    // 5. Fail step if validation failed
     if (!result.pass) {
       core.setFailed(
-        `Marshal semantic check FAILED (score=${result.score}) – ${result.reason}`
+        `Marshal semantic check FAILED (score=${result.score}) - ${result.reason}`
       );
     } else {
       core.info(`✅ Marshal passed (score=${result.score})`);
     }
-
-  } catch (err) {
-    core.setFailed(err.message);
+  } catch (error) {
+    core.setFailed(error.message);
   }
 }
 

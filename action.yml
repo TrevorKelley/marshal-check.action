@@ -1,16 +1,16 @@
-name: 'Marshal Diff Validator'
-description: 'Runs Marshal AI semantic diff validation on a Pull Request'
-author: 'Marshal AI Team'
+name: "Marshal Diff Validator"
+description: "Runs Marshal AI semantic diff validation on a Pull Request"
+author: "Marshal AI Team"
 branding:
   icon: check-circle
   color: purple
 
 inputs:
   api-url:
-    description: 'Your Marshal API Gateway URL (e.g. https://.../validate_diff)'
+    description: "Your Marshal API Gateway URL (e.g. https://.../validate_diff)"
     required: true
   api-key:
-    description: 'Marshal API key'
+    description: "Marshal API key"
     required: true
 
 runs:
