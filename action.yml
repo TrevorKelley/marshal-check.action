@@ -1,17 +1,18 @@
-description: 'Marshal Validate GitHub Action'
-runs:
-  using: 'node16'
-  main: 'dist/index.js'
+name: 'Marshal Diff Validator'
+description: 'Runs Marshal AI semantic diff validation on a Pull Request'
+author: 'Marshal AI Team'
+branding:
+  icon: check-circle
+  color: purple
+
 inputs:
   api-url:
-    description: 'Base URL of the Marshal API (e.g. https://api.marshal.app)'
+    description: 'Your Marshal API Gateway URL (e.g. https://.../validate_diff)'
     required: true
   api-key:
     description: 'Marshal API key'
     required: true
-  prompt:
-    description: 'Optional original prompt or feature description'
-    required: false
-permissions:
-  pull-requests: write
-  checks: write
+
+runs:
+  using: 'node16'
+  main: 'src/index.js'

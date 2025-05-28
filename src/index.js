@@ -1,58 +1,68 @@
-
-// File: src/index.js
-const core = require('@actions/core');
+const core   = require('@actions/core');
 const github = require('@actions/github');
-const fetch = require('node-fetch');
+const fetch  = require('node-fetch');
 
 async function run() {
   try {
-    const apiUrl = core.getInput('api-url', { required: true });
-    const apiKey = core.getInput('api-key', { required: true });
-    const prompt = core.getInput('prompt');
+    const apiUrl = core.getInput('api-url',    { required: true });
+    const apiKey = core.getInput('api-key',    { required: true });
+    const token  = core.getInput('github-token') || process.env.GITHUB_TOKEN;
+    if (!token) throw new Error('GITHUB_TOKEN is required');
 
+    // Octokit to fetch PR info
+    const octokit = github.getOctokit(token);
     const { owner, repo } = github.context.repo;
-    const pullRequest = github.context.payload.pull_request;
-    if (!pullRequest) {
-      core.setFailed('No pull_request found in the context.');
-      return;
-    }
-    const prNumber = pullRequest.number;
+    const prNumber = github.context.payload.pull_request?.number;
+    if (!prNumber) throw new Error('This action must run on pull_request events');
 
-    // Call Marshal API
-    const response = await fetch(`${apiUrl}/validate_diff`, {
+    // 1️⃣ fetch the diff
+    const diffResp = await octokit.request(
+      'GET /repos/{owner}/{repo}/pulls/{pull_number}',
+      {
+        owner, repo, pull_number: prNumber,
+        mediaType: { format: 'diff' }
+      }
+    );
+    const diff = diffResp.data; // raw diff text
+
+    // 2️⃣ pull prompt from PR body
+    const prompt = github.context.payload.pull_request.body || '';
+
+    // 3️⃣ build payload
+    const payload = {
+      owner, repo,
+      commit: github.context.payload.pull_request.head.sha,
+      diff,
+      prompt
+    };
+
+    // 4️⃣ call Marshal API
+    const res = await fetch(apiUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': apiKey,
+        'x-api-key': apiKey
       },
-      body: JSON.stringify({ repo: `${owner}/${repo}`, prNumber, prompt }),
+      body: JSON.stringify(payload)
     });
-    const result = await response.json();
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error(`Marshal API error ${res.status}: ${txt}`);
+    }
+    const result = await res.json();
+    console.log('Marshal result:', result);
 
-    // Create or update a check run
-    const octokit = github.getOctokit(apiKey);
-    const check = await octokit.rest.checks.create({
-      owner,
-      repo,
-      name: 'marshal/validate',
-      head_sha: pullRequest.head.sha,
-      status: 'completed',
-      conclusion: result.status === 'pass' ? 'success' : 'failure',
-      output: {
-        title: 'Marshal Validation Report',
-        summary: result.status === 'pass' ? '✅ All checks passed' : '🚨 Validation failed',
-        text: `**Semantic Score:** ${result.semanticScore}\n` +
-              `**Tests:** ${result.tests.lint && result.tests.tests ? '✔ Passed' : '❌ Issues'}\n` +
-              (result.previewUrl ? `**Preview:** ${result.previewUrl}` : '')
-      }
-    });
-
-    if (result.status !== 'pass') {
-      core.setFailed('Marshal validation failed.');
+    // 5️⃣ fail the step if pass=false
+    if (!result.pass) {
+      core.setFailed(
+        `Marshal semantic check FAILED (score=${result.score}) – ${result.reason}`
+      );
+    } else {
+      core.info(`✅ Marshal passed (score=${result.score})`);
     }
 
-  } catch (error) {
-    core.setFailed(`Action failed: ${error.message}`);
+  } catch (err) {
+    core.setFailed(err.message);
   }
 }
 
