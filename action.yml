@@ -1,5 +1,5 @@
 name: "Marshal Diff Validator"
-description: "Runs Marshal AI semantic diff validation on a Pull Request"
+description: "Triggers Marshal AI semantic diff validation on a Pull Request"
 author: "Marshal AI Team"
 branding:
   icon: check-circle

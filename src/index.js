@@ -32,7 +32,7 @@ async function run() {
     const branch = 'main'
 
     // 3. Build payload
-    const payload = { owner, repo, commit: pr.head.sha, diff, prompt, branch};
+    const payload = { owner, repo, commit: pr.head.sha, diff, prompt, branch };
 
     // 4. Call Marshal API
     const res = await fetch(apiUrl, {
@@ -49,15 +49,7 @@ async function run() {
     }
     const result = await res.json();
     console.log('Marshal result:', result);
-
-    // 5. Fail step if validation failed
-    if (!result.pass) {
-      core.setFailed(
-        `Marshal semantic check FAILED (score=${result.score}) - ${result.reason}`
-      );
-    } else {
-      core.info(`✅ Marshal passed (score=${result.score})`);
-    }
+    
   } catch (error) {
     core.setFailed(error.message);
   }
