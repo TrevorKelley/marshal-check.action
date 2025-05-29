@@ -15,6 +15,8 @@ async function run() {
     if (!pr) throw new Error('This action must run on pull_request events');
     const commit = pr.head.sha;
 
+    core.info('good so far')
+
     // 1️⃣ Find the auto-created check run for *this* workflow
     const checkName = process.env.GITHUB_WORKFLOW;  
     const { data: { check_runs } } = await octokit.rest.checks.listForRef({
@@ -23,6 +25,9 @@ async function run() {
       ref: commit,
       check_name: checkName,
     });
+
+    core.info('good so far!')
+
     if (!check_runs.length) {
       throw new Error(`No check run found named '${checkName}' on ${commit}`);
     }
@@ -37,6 +42,9 @@ async function run() {
     const diff = diffResp.data;
     const prompt = pr.body || '';
 
+    core.info('good so far!!')
+
+
     branch = 'main'
     // 3️⃣ Fire your Marshal API, including checkRunId
     const payload = { owner, repo, commit, diff, prompt, checkRunId, branch };
@@ -48,6 +56,9 @@ async function run() {
       },
       body: JSON.stringify(payload)
     });
+
+    core.info('good so far!!!!')
+
     if (res.status !== 202) {
       const txt = await res.text();
       throw new Error(`Marshal API error ${res.status}: ${txt}`);
