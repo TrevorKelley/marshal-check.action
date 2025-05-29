@@ -19,25 +19,27 @@ async function run() {
 
     // 1️⃣ Find the auto-created check run for *this* workflow
 
-    const checkName = github.context.workflow;  
-
-    core.info(`ok: ${checkName}`)
-    const { data: { check_runs } } = await octokit.rest.checks.listForRef({
-      owner,
-      repo,
-      ref: commit,
-      check_name: checkName,
-      status: 'in_progress'
-    });
-
-
-    core.info('good so far!')
-
-    if (!check_runs.length) {
-      throw new Error(`No check run found named '${checkName}' on ${commit}`);
+ // 1️⃣ Poll until GitHub has created this workflow’s “in_progress” check run
+    const checkName = github.context.workflow;
+    let checkRuns = [];
+    for (let attempt = 1; attempt <= 5; attempt) {
+      core.info(`Polling for in_progress check run (‘${checkName}’) – attempt ${attempt}/5…`);
+      const resp = await octokit.rest.checks.listForRef({
+        owner,
+        repo,
+        ref: commit,
+        check_name: checkName,
+        status: 'in_progress'
+      });
+      checkRuns = resp.data.check_runs;
+      if (checkRuns.length > 0) break;
+      await new Promise(res => setTimeout(res, 2000));
     }
-    const checkRunId = check_runs[0].id;
-    core.info(`▶ Using existing check run #${checkRunId} ('${checkName}')`);
+    if (!checkRuns.length) {
+      throw new Error(`No in_progress check run named '${checkName}' on ${commit}`);
+    }
+    const checkRunId = checkRuns[0].id;
+    core.info(`▶ Found check run #${checkRunId} for '${checkName}'`);
 
     // 2️⃣ Compute diff & prompt exactly as before
     const diffResp = await octokit.request(
