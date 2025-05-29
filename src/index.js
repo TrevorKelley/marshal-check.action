@@ -5,48 +5,61 @@ const fetch  = require('node-fetch');
 
 async function run() {
   try {
-    // 1️⃣ Get inputs & context
-    const apiUrl = core.getInput('api-url', { required: true });
-    const apiKey = core.getInput('api-key', { required: true });
+    // 1️⃣ Inputs & context
+    const apiUrl = core.getInput('api-url',    { required: true });
+    const apiKey = core.getInput('api-key',    { required: true });
     const token  = process.env.GITHUB_TOKEN;
     if (!token) throw new Error('GITHUB_TOKEN is required');
 
     const octokit = github.getOctokit(token);
     const { owner, repo } = github.context.repo;
-    const pr   = github.context.payload.pull_request;
+    const pr = github.context.payload.pull_request;
     if (!pr) throw new Error('This action must run on pull_request events');
     const commit   = pr.head.sha;
-    const checkName = github.context.workflow; // must match your workflow’s name
+    const checkName = github.context.workflow; // your workflow's top-level `name:`
 
-    // 2️⃣ PHASE 1: wait up to ~20s for GitHub to spin up the in_progress check
-    const maxPhase1  = 10;
-    const intervalMs = 2000;
+    core.info(`🔍 Looking for check run "${checkName}" on SHA ${commit}`);
+
+    // 2️⃣ PHASE 1: locate the job's own check run (queued or in_progress)
+    const maxPhase1 = 10, pause = 2000;
     let checkRunId;
-    for (let i = 0; i < maxPhase1; i++) {
-      core.info(`Phase 1: looking for in_progress '${checkName}' (attempt ${i+1}/${maxPhase1})…`);
+    for (let i = 1; i <= maxPhase1; i++) {
+      core.info(`Phase1: listing all check runs (attempt ${i}/${maxPhase1})`);
       const { data } = await octokit.rest.checks.listForRef({
-        owner, repo, ref: commit, check_name: checkName, status: 'in_progress'
+        owner, repo, ref: commit
       });
-      if (data.check_runs.length) {
-        checkRunId = data.check_runs[0].id;
-        core.info(`→ Found in_progress check run #${checkRunId}`);
+      // debug log all names/statuses
+      data.check_runs.forEach(r =>
+        core.debug(`  • ${r.name} [${r.status}] → id=${r.id}`)
+      );
+      // find the first run with our name not yet completed
+      const run = data.check_runs.find(r =>
+        r.name === checkName && r.status !== 'completed'
+      );
+      if (run) {
+        checkRunId = run.id;
+        core.info(`✅ Found check run id=${checkRunId} status=${run.status}`);
         break;
       }
-      await new Promise(r => setTimeout(r, intervalMs));
+      await new Promise(r => setTimeout(r, pause));
     }
     if (!checkRunId) {
-      throw new Error(`Timed out waiting for in_progress '${checkName}' on ${commit}`);
+      throw new Error(`Timed out locating check run "${checkName}"`);
     }
 
     // 3️⃣ Gather diff & prompt
     const diffResp = await octokit.request(
-      'GET /repos/{owner}/{repo}/pulls/{pull_number}',
-      { owner, repo, pull_number: pr.number, mediaType: { format: 'diff' } }
+      'GET /repos/{owner}/{repo}/pulls/{pull_number}', {
+        owner, repo,
+        pull_number: pr.number,
+        mediaType: { format: 'diff' }
+      }
     );
     const diff   = diffResp.data;
     const prompt = pr.body || '';
 
-    // 4️⃣ Kick off Marshal via your API
+    // 4️⃣ Kick off Marshal
+    core.info(`🚀 Firing Marshal for run #${checkRunId}…`);
     const payload = { owner, repo, commit, diff, prompt, checkRunId };
     const res = await fetch(apiUrl, {
       method: 'POST',
@@ -62,36 +75,36 @@ async function run() {
     }
     core.info('✅ Marshal validation kicked off');
 
-    // 5️⃣ PHASE 2: poll the same check until it completes (~60s max)
+    // 5️⃣ PHASE 2: wait for that check to complete
     const maxPhase2 = 30;
     let finalConclusion, finalOutput;
-    for (let i = 0; i < maxPhase2; i++) {
-      core.info(`Phase 2: polling #${checkRunId} for completion (attempt ${i+1}/${maxPhase2})…`);
+    for (let i = 1; i <= maxPhase2; i++) {
+      core.info(`Phase2: polling check #${checkRunId} (attempt ${i}/${maxPhase2})`);
       const { data: run } = await octokit.rest.checks.get({
-        owner, repo, check_run_id: checkRunId
+        owner, repo,
+        check_run_id: checkRunId
       });
       if (run.status === 'completed') {
         finalConclusion = run.conclusion;
         finalOutput     = run.output;
-        core.info(`→ Check #${checkRunId} completed (${finalConclusion})`);
+        core.info(`✅ Check #${checkRunId} completed (${finalConclusion})`);
         break;
       }
-      await new Promise(r => setTimeout(r, intervalMs));
+      await new Promise(r => setTimeout(r, pause));
     }
     if (!finalConclusion) {
       throw new Error(`Timed out waiting for check #${checkRunId} to complete`);
     }
 
-    // 6️⃣ Final pass/fail
+    // 6️⃣ Final result
     if (finalConclusion !== 'success') {
       core.setFailed(
-        `🚨 Marshal check failed (${finalConclusion})\n\n` +
+        `🚨 Marshal validation FAILED (${finalConclusion})\n\n` +
         `**${finalOutput.title}**\n${finalOutput.summary}\n\n${finalOutput.text}`
       );
     } else {
-      core.info(`✅ Marshal passed: ${finalOutput.summary}`);
+      core.info(`🎉 Marshal validation PASSED: ${finalOutput.summary}`);
     }
-
   } catch (error) {
     core.setFailed(error.message);
   }
