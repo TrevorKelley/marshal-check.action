@@ -6,60 +6,54 @@ const fetch  = require('node-fetch');
 async function run() {
   try {
     // 1️⃣ Inputs & context
-    const apiUrl = core.getInput('api-url',    { required: true });
-    const apiKey = core.getInput('api-key',    { required: true });
+    const apiUrl = core.getInput('api-url', { required: true });
+    const apiKey = core.getInput('api-key', { required: true });
     const token  = process.env.GITHUB_TOKEN;
     if (!token) throw new Error('GITHUB_TOKEN is required');
 
     const octokit = github.getOctokit(token);
     const { owner, repo } = github.context.repo;
     const pr = github.context.payload.pull_request;
-    if (!pr) throw new Error('This action must run on pull_request events');
-    const commit   = pr.head.sha;
-    const checkName = github.context.workflow; // your workflow's top-level `name:`
+    if (!pr) throw new Error('Must run on pull_request');
+    const commit = pr.head.sha;
 
-    core.info(`🔍 Looking for check run "${checkName}" on SHA ${commit}`);
+    core.info(`🔍 Looking up any non-completed check on ${commit}`);
 
-    // 2️⃣ PHASE 1: locate the job's own check run (queued or in_progress)
+    // 2️⃣ PHASE 1: find the first check run that isn’t completed
     const maxPhase1 = 10, pause = 2000;
     let checkRunId;
     for (let i = 1; i <= maxPhase1; i++) {
-      core.info(`Phase1: listing all check runs (attempt ${i}/${maxPhase1})`);
+      core.info(`Phase 1 [${i}/${maxPhase1}]: list all checks`);
       const { data } = await octokit.rest.checks.listForRef({
         owner, repo, ref: commit
       });
-      // debug log all names/statuses
-      data.check_runs.forEach(r =>
-        core.debug(`  • ${r.name} [${r.status}] → id=${r.id}`)
-      );
-      // find the first run with our name not yet completed
-      const run = data.check_runs.find(r =>
-        r.name === checkName && r.status !== 'completed'
-      );
+      // debug:
+//      data.check_runs.forEach(r =>
+//        core.debug(` • ${r.name} [${r.status}] id=${r.id}`)
+//      );
+      const run = data.check_runs.find(r => r.status !== 'completed');
       if (run) {
         checkRunId = run.id;
-        core.info(`✅ Found check run id=${checkRunId} status=${run.status}`);
+        core.info(`→ Found check run #${checkRunId} (${run.name} / ${run.status})`);
         break;
       }
       await new Promise(r => setTimeout(r, pause));
     }
     if (!checkRunId) {
-      throw new Error(`Timed out locating check run "${checkName}"`);
+      throw new Error(`Timed out waiting for your job’s check run to appear on ${commit}`);
     }
 
-    // 3️⃣ Gather diff & prompt
+    // 3️⃣ Grab the diff & prompt
+    core.info('📄 Fetching PR diff + prompt…');
     const diffResp = await octokit.request(
-      'GET /repos/{owner}/{repo}/pulls/{pull_number}', {
-        owner, repo,
-        pull_number: pr.number,
-        mediaType: { format: 'diff' }
-      }
+      'GET /repos/{owner}/{repo}/pulls/{pull_number}',
+      { owner, repo, pull_number: pr.number, mediaType: { format: 'diff' } }
     );
-    const diff   = diffResp.data;
+    const diff = diffResp.data;
     const prompt = pr.body || '';
 
-    // 4️⃣ Kick off Marshal
-    core.info(`🚀 Firing Marshal for run #${checkRunId}…`);
+    // 4️⃣ Kick off your Marshal API
+    core.info(`🚀 Firing Marshal for check #${checkRunId}…`);
     const payload = { owner, repo, commit, diff, prompt, checkRunId };
     const res = await fetch(apiUrl, {
       method: 'POST',
@@ -73,40 +67,39 @@ async function run() {
       const txt = await res.text();
       throw new Error(`Marshal API error ${res.status}: ${txt}`);
     }
-    core.info('✅ Marshal validation kicked off');
+    core.info('✅ Marshal kicked off successfully');
 
-    // 5️⃣ PHASE 2: wait for that check to complete
+    // 5️⃣ PHASE 2: wait for that same run to complete
     const maxPhase2 = 30;
-    let finalConclusion, finalOutput;
+    let final;
     for (let i = 1; i <= maxPhase2; i++) {
-      core.info(`Phase2: polling check #${checkRunId} (attempt ${i}/${maxPhase2})`);
+      core.info(`Phase 2 [${i}/${maxPhase2}]: polling check #${checkRunId}`);
       const { data: run } = await octokit.rest.checks.get({
-        owner, repo,
-        check_run_id: checkRunId
+        owner, repo, check_run_id: checkRunId
       });
       if (run.status === 'completed') {
-        finalConclusion = run.conclusion;
-        finalOutput     = run.output;
-        core.info(`✅ Check #${checkRunId} completed (${finalConclusion})`);
+        final = run;
+        core.info(`→ Check #${checkRunId} completed (${run.conclusion})`);
         break;
       }
       await new Promise(r => setTimeout(r, pause));
     }
-    if (!finalConclusion) {
+    if (!final) {
       throw new Error(`Timed out waiting for check #${checkRunId} to complete`);
     }
 
-    // 6️⃣ Final result
-    if (finalConclusion !== 'success') {
+    // 6️⃣ Conclude
+    if (final.conclusion !== 'success') {
       core.setFailed(
-        `🚨 Marshal validation FAILED (${finalConclusion})\n\n` +
-        `**${finalOutput.title}**\n${finalOutput.summary}\n\n${finalOutput.text}`
+        `🚨 Marshal FAILED (${final.conclusion})\n\n` +
+        `**${final.output.title}**\n${final.output.summary}\n\n${final.output.text}`
       );
     } else {
-      core.info(`🎉 Marshal validation PASSED: ${finalOutput.summary}`);
+      core.info(`🎉 Marshal PASSED: ${final.output.summary}`);
     }
-  } catch (error) {
-    core.setFailed(error.message);
+
+  } catch (err) {
+    core.setFailed(err.message);
   }
 }
 
