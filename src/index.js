@@ -54,7 +54,8 @@ async function run() {
 
     // 4️⃣ Kick off your Marshal API
     core.info(`🚀 Firing Marshal for check #${checkRunId}…`);
-    const payload = { owner, repo, commit, diff, prompt, checkRunId };
+    const branch = 'main'
+    const payload = { owner, repo, commit, diff, prompt, checkRunId, branch };
     const res = await fetch(apiUrl, {
       method: 'POST',
       headers: {
