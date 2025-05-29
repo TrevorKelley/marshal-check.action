@@ -21,20 +21,20 @@ async function run() {
 
  // 1️⃣ Poll until GitHub has created this workflow’s “in_progress” check run
     const checkName = github.context.workflow;
-    let checkRuns = [];
-    for (let attempt = 1; attempt <= 5; attempt) {
-      core.info(`Polling for in_progress check run (‘${checkName}’) – attempt ${attempt}/5…`);
-      const resp = await octokit.rest.checks.listForRef({
-        owner,
-        repo,
-        ref: commit,
-        check_name: checkName,
-        status: 'in_progress'
-      });
-      checkRuns = resp.data.check_runs;
-      if (checkRuns.length > 0) break;
-      await new Promise(res => setTimeout(res, 2000));
-    }
+
+    core.info(`Polling for in_progress check run ('${checkName}') - attempt ${attempt}/5…`);
+
+    const resp = await octokit.rest.checks.listForRef({
+    owner,
+    repo,
+    ref: commit,
+    check_name: checkName,
+    status: 'in_progress'
+    });
+
+
+    const checkRuns = resp.data.check_runs;
+    
     if (!checkRuns.length) {
       throw new Error(`No in_progress check run named '${checkName}' on ${commit}`);
     }
