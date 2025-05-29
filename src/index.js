@@ -21,7 +21,7 @@ async function run() {
 
     const checkName = github.context.workflow;  
 
-    core.info('ok', checkName)
+    core.info(`ok: ${checkName}`)
     const { data: { check_runs } } = await octokit.rest.checks.listForRef({
       owner,
       repo,
