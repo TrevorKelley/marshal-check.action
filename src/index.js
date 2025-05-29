@@ -18,7 +18,7 @@ async function run() {
     core.info('good so far')
 
     // 1️⃣ Find the auto-created check run for *this* workflow
-    const checkName = process.env.GITHUB_WORKFLOW;  
+    const checkName = process.env.GITHUB_JOB;  
     const { data: { check_runs } } = await octokit.rest.checks.listForRef({
       owner,
       repo,
