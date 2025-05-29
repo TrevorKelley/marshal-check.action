@@ -27,6 +27,7 @@ async function run() {
       repo,
       ref: commit,
       check_name: checkName,
+      status: 'in_progress'
     });
 
 
