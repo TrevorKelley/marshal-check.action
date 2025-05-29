@@ -22,7 +22,7 @@ async function run() {
  // 1️⃣ Poll until GitHub has created this workflow’s “in_progress” check run
     const checkName = github.context.workflow;
 
-    core.info(`Polling for in_progress check run ('${checkName}') - attempt ${attempt}/5…`);
+    core.info(`Polling for in_progress check run ('${checkName}')`);
 
     const resp = await octokit.rest.checks.listForRef({
     owner,
